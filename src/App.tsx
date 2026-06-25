@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useUpwords } from './hooks/use-upwords';
 import { Header } from './components/Header';
 import { GameSettings } from './components/GameSettings';
+import { OnlineLobby } from './components/OnlineLobby';
 import { Board } from './components/Board';
 import { Rack } from './components/Rack';
 import { Scoreboard } from './components/Scoreboard';
@@ -28,6 +29,8 @@ export default function App() {
   const [bestMovePreview, setBestMovePreview] = useState<CandidateMove | null>(null);
   const [challengeResult, setChallengeResult] = useState<{ word: string; success: boolean } | null>(null);
   const [noHintAvailable, setNoHintAvailable] = useState(false);
+  const [preGameScreen, setPreGameScreen] = useState<'mode-select' | 'local-setup' | 'online-lobby'>('mode-select');
+  const [onlineInfo, setOnlineInfo] = useState<{ roomCode: string; mySeatIndex: number } | null>(null);
 
   useEffect(() => {
     setNoHintAvailable(false);
@@ -89,8 +92,47 @@ export default function App() {
     <div className="min-h-screen flex flex-col bg-[#11161f] text-slate-100">
       <Header onRestart={handleRestart} gameStarted={gameStarted} winnerId={winnerId} players={players} />
 
-      {!gameStarted ? (
+      {!gameStarted && !onlineInfo && preGameScreen === 'mode-select' ? (
+        <div className="flex-1 flex flex-col items-center justify-center p-6 md:p-12">
+          <div className="max-w-md w-full glass-card rounded-3xl border border-white/8 shadow-2xl p-8 relative overflow-hidden">
+            <div className="absolute -top-20 -left-20 w-48 h-48 bg-red-600/8 rounded-full blur-3xl pointer-events-none" />
+            <div className="text-center mb-6 relative">
+              <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-red-500 to-red-700 shadow-xl shadow-red-600/25 mb-4 ring-1 ring-red-400/30">
+                <span className="font-serif-luxury text-3xl font-bold text-white select-none">U</span>
+              </div>
+              <p className="text-xs text-slate-400 max-w-xs mx-auto">Stack letters, build words, and outplay your opponents.</p>
+            </div>
+            <div className="space-y-3 relative">
+              <button onClick={() => setPreGameScreen('local-setup')}
+                className="w-full bg-slate-900/60 hover:bg-slate-900 border border-white/10 text-white font-bold py-3.5 rounded-xl active:scale-[0.98] transition-all text-sm cursor-pointer">
+                Play on This Device
+              </button>
+              <button onClick={() => setPreGameScreen('online-lobby')}
+                className="w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-red-600/20 active:scale-[0.98] transition-all text-sm cursor-pointer">
+                Play Online
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : !gameStarted && !onlineInfo && preGameScreen === 'online-lobby' ? (
+        <OnlineLobby
+          onBack={() => setPreGameScreen('mode-select')}
+          onGameStart={(roomCode, mySeatIndex) => setOnlineInfo({ roomCode, mySeatIndex })}
+        />
+      ) : !gameStarted && !onlineInfo ? (
         <GameSettings onStart={startNewGame} isLoading={!dictLoaded} dictProgress={dictLoadingProgress} />
+      ) : onlineInfo && !gameStarted ? (
+        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
+          <div className="glass-card rounded-2xl border border-emerald-500/20 p-6 max-w-sm">
+            <p className="text-emerald-400 font-bold text-sm mb-2">Connected!</p>
+            <p className="text-xs text-slate-400">
+              Room <span className="font-mono text-red-300 font-bold">{onlineInfo.roomCode}</span> — you're seat {onlineInfo.mySeatIndex + 1}.
+            </p>
+            <p className="text-[10px] text-slate-500 mt-3">
+              Lobby connectivity confirmed — the actual shared game board comes next.
+            </p>
+          </div>
+        </div>
       ) : (
         <main className="flex-1 flex flex-col lg:flex-row p-4 md:p-6 gap-6 max-w-7xl w-full mx-auto min-h-0">
 
