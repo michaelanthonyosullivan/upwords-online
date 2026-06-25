@@ -165,14 +165,37 @@ export default function App() {
         <GameSettings onStart={startNewGame} isLoading={!dictLoaded} dictProgress={dictLoadingProgress} />
       ) : onlineInfo && !gameStarted ? (
         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
-          <div className="glass-card rounded-2xl border border-emerald-500/20 p-6 max-w-sm">
-            <p className="text-emerald-400 font-bold text-sm mb-2">Connected!</p>
-            <p className="text-xs text-slate-400">
-              Room <span className="font-mono text-red-300 font-bold">{onlineInfo.roomCode}</span> — you're seat {onlineInfo.mySeatIndex + 1}.
+          <div className="glass-card rounded-2xl border border-emerald-500/20 p-6 max-w-sm text-left">
+            <p className="text-emerald-400 font-bold text-sm mb-3 text-center">Connecting…</p>
+            <div className="space-y-1.5 text-[11px] font-mono">
+              <div className="flex justify-between gap-3">
+                <span className="text-slate-500">Room</span>
+                <span className="text-red-300 font-bold">{onlineInfo.roomCode}</span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-slate-500">Room data received</span>
+                <span className={room ? 'text-emerald-400' : 'text-amber-400'}>{room ? 'yes' : 'waiting…'}</span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-slate-500">Room status</span>
+                <span className="text-slate-300">{room?.status ?? '—'}</span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-slate-500">Game state published</span>
+                <span className={room?.gameState ? 'text-emerald-400' : 'text-amber-400'}>{room?.gameState ? 'yes' : 'not yet'}</span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-slate-500">My role</span>
+                <span className="text-slate-300">{isHost ? `host (player ${myPlayerIndex + 1})` : `player ${myPlayerIndex + 1}`}</span>
+              </div>
+            </div>
+            <p className="text-[10px] text-slate-500 mt-4 text-center">
+              If this doesn't update within a few seconds, try refreshing the page.
             </p>
-            <p className="text-[10px] text-slate-500 mt-3">
-              Lobby connectivity confirmed — the actual shared game board comes next.
-            </p>
+            <button onClick={() => window.location.reload()}
+              className="w-full mt-3 bg-slate-900/60 hover:bg-slate-900 border border-white/10 text-white font-bold py-2.5 rounded-xl active:scale-[0.98] transition-all text-xs cursor-pointer">
+              Refresh
+            </button>
           </div>
         </div>
       ) : (
