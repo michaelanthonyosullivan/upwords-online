@@ -19,7 +19,47 @@ interface GameSnapshot {
   lastPlayPlacements: { r: number; c: number }[];
 }
 
-export function useUpwords() {
+// ── Online multiplayer types ──────────────────────────────────────────────
+// The host's browser is the single source of truth: it runs all the same
+// game logic as local play, but also publishes the full state after every
+// change. Guests mirror that published state for display, and instead of
+// mutating anything locally, send an action request that the host receives
+// and applies through the exact same submitPlay/passTurn/exchangeTiles used
+// for local play.
+export interface SharedGameState {
+  board: Board;
+  players: Player[];
+  tileBag: string[];
+  currentTurn: number;
+  consecutivePasses: number;
+  history: PlayHistoryItem[];
+  gameEnded: boolean;
+  winnerId: number | null;
+  lastPlayPlacements: { r: number; c: number }[];
+}
+
+export type OnlineAction =
+  | { type: 'play'; placements: PlayPlacement[] }
+  | { type: 'pass' }
+  | { type: 'exchange'; tiles: string[] };
+
+export interface OnlineConfig {
+  isHost: boolean;
+  mySeatIndex: number;
+  remoteState: SharedGameState | null;
+  onStateChange?: (state: SharedGameState) => void;
+  onRequestAction?: (action: OnlineAction) => void;
+  incomingActionRequest?: (OnlineAction & { requestId?: string }) | null;
+  onActionRequestProcessed?: () => void;
+}
+
+export interface OnlineRosterEntry {
+  name: string;
+  isAi: boolean;
+  aiLevel?: 'easy' | 'medium' | 'hard';
+}
+
+export function useUpwords(online?: OnlineConfig) {
   const [board, setBoard] = useState<Board>(createEmptyBoard());
   const [players, setPlayers] = useState<Player[]>([]);
   const [tileBag, setTileBag] = useState<string[]>([]);
@@ -125,7 +165,55 @@ export function useUpwords() {
     setWinnerId(null);
   };
 
-  // ── Start New Game ─────────────────────────────────────────────────────────
+  // ── Online sync: host publishes state after every change ──────────────────
+  useEffect(() => {
+    if (!online?.isHost || !gameStarted) return;
+    online.onStateChange?.({
+      board, players, tileBag, currentTurn, consecutivePasses, history,
+      gameEnded, winnerId, lastPlayPlacements
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [board, players, tileBag, currentTurn, consecutivePasses, history, gameEnded, winnerId, lastPlayPlacements, gameStarted]);
+
+  // ── Online sync: guests mirror whatever the host publishes ─────────────────
+  useEffect(() => {
+    if (!online || online.isHost) return;
+    const remote = online.remoteState;
+    if (!remote) return;
+    setBoard(remote.board);
+    setPlayers(remote.players);
+    setTileBag(remote.tileBag);
+    setCurrentTurn(remote.currentTurn);
+    setConsecutivePasses(remote.consecutivePasses);
+    setHistory(remote.history);
+    setGameEnded(remote.gameEnded);
+    setWinnerId(remote.winnerId);
+    setLastPlayPlacements(remote.lastPlayPlacements);
+    setGameStarted(true);
+    setPlacements([]);
+    setActiveRack([...(remote.players[online.mySeatIndex]?.rack || [])]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [online?.remoteState]);
+
+  // ── Online sync: host receives and applies action requests from guests ────
+  const lastProcessedRequestRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!online?.isHost) return;
+    const req = online.incomingActionRequest;
+    if (!req) return;
+    const reqKey = JSON.stringify(req);
+    if (lastProcessedRequestRef.current === reqKey) return;
+    lastProcessedRequestRef.current = reqKey;
+
+    if (req.type === 'play') submitPlay(req.placements);
+    else if (req.type === 'pass') passTurn();
+    else if (req.type === 'exchange') exchangeTiles(req.tiles);
+
+    online.onActionRequestProcessed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [online?.incomingActionRequest]);
+
+
   const startNewGame = (
     humanName: string,
     botDifficulty: 'easy' | 'medium' | 'hard',
@@ -161,9 +249,38 @@ export function useUpwords() {
     allMovesRef.current = [];
   };
 
+  /** Host-only: initializes an online game from the room's seat roster (mixed humans + AI). */
+  const startOnlineGame = (roster: OnlineRosterEntry[]) => {
+    setCoachEnabled(false); // coach analysis isn't meaningful (or synced) across remote players
+    const bag = generateShuffledBag();
+    const newPlayers: Player[] = roster.map((r, idx) => ({
+      id: idx, name: r.name.trim() || `Player ${idx + 1}`, score: 0, rack: bag.splice(0, 7),
+      isAi: r.isAi, aiLevel: r.aiLevel
+    }));
+    setBoard(createEmptyBoard());
+    setPlayers(newPlayers);
+    setTileBag(bag);
+    setCurrentTurn(0);
+    setConsecutivePasses(0);
+    setHistory([]);
+    setGameEnded(false);
+    setWinnerId(null);
+    setPlacements([]);
+    setCoachAnalysis(null);
+    setHint(null);
+    setLastPlayPlacements([]);
+    setActiveRack([...(newPlayers[online?.mySeatIndex ?? 0]?.rack || [])]);
+    setGameStarted(true);
+    setTurnSnapshots([]);
+    prevSnapshotTurnRef.current = null;
+    bestMoveRef.current = null;
+    allMovesRef.current = [];
+  };
+
   // ── Tile Placement ─────────────────────────────────────────────────────────
   const placeTileTemp = (r: number, c: number, letter: string) => {
     if (gameEnded || players[currentTurn]?.isAi) return;
+    if (online && currentTurn !== online.mySeatIndex) return;
     const existingIdx = placements.findIndex(p => p.r === r && p.c === c);
     if (existingIdx !== -1) {
       const prevLetter = placements[existingIdx].letter;
@@ -231,6 +348,15 @@ export function useUpwords() {
   const submitPlay = (placementsOverride?: PlayPlacement[]) => {
     const activePlacements = placementsOverride ?? placements;
     if (activePlacements.length === 0) return { success: false, error: 'No tiles placed.' };
+
+    if (online && !online.isHost) {
+      if (currentTurn !== online.mySeatIndex) return { success: false, error: 'Not your turn.' };
+      online.onRequestAction?.({ type: 'play', placements: activePlacements });
+      setPlacements([]);
+      setHint(null);
+      return { success: true };
+    }
+
     const player = players[currentTurn];
     if (!player || player.isAi) return { success: false, error: 'Not your turn.' };
 
@@ -296,6 +422,12 @@ export function useUpwords() {
   };
 
   const passTurn = () => {
+    if (online && !online.isHost) {
+      if (currentTurn !== online.mySeatIndex) return;
+      recallTiles(); // restore any tentatively-placed tiles to the rack before passing
+      online.onRequestAction?.({ type: 'pass' });
+      return;
+    }
     const player = players[currentTurn];
     if (player.isAi) return;
     recallTiles();
@@ -310,11 +442,19 @@ export function useUpwords() {
   };
 
   const exchangeTiles = (tilesToExchange: string[]) => {
-    const player = players[currentTurn];
-    if (player.isAi) return;
     if (tilesToExchange.length === 0) return { success: false, error: 'No tiles selected.' };
     if (tileBag.length < tilesToExchange.length)
       return { success: false, error: `Not enough tiles in bag (${tileBag.length} left).` };
+
+    if (online && !online.isHost) {
+      if (currentTurn !== online.mySeatIndex) return { success: false, error: 'Not your turn.' };
+      recallTiles();
+      online.onRequestAction?.({ type: 'exchange', tiles: tilesToExchange });
+      return { success: true };
+    }
+
+    const player = players[currentTurn];
+    if (player.isAi) return { success: false, error: 'Not your turn.' };
 
     recallTiles();
     let tempRack = [...player.rack];
@@ -364,6 +504,7 @@ export function useUpwords() {
   // ── AI Turn ────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!gameStarted || gameEnded || coachAnalysis !== null) return;
+    if (online && !online.isHost) return; // only the host runs AI turns
     const currentPlayer = players[currentTurn];
     if (!currentPlayer?.isAi) return;
 
@@ -451,7 +592,7 @@ export function useUpwords() {
       }
     };
     perform();
-  }, [currentTurn, gameStarted, gameEnded, coachAnalysis]);
+  }, [currentTurn, gameStarted, gameEnded, coachAnalysis, online?.isHost]);
 
   const endGame = (currentPlayers: Player[], _bag: string[]) => {
     const finalized = currentPlayers.map(p => ({ ...p, score: Math.max(0, p.score - p.rack.length) }));
@@ -499,7 +640,7 @@ export function useUpwords() {
     dictLoaded, dictLoadingProgress, gameStarted, isAiThinking,
     placements, activeRack, hint, coachAnalysis, lastPlayPlacements,
     coachEnabled, setCoachEnabled, customWordsVersion, humanMovesReady, turnSnapshots, rewindToTurn,
-    startNewGame, placeTileTemp, removeTileTemp, recallTiles, shuffleRack, renamePlayer, reorderRack,
+    startNewGame, startOnlineGame, placeTileTemp, removeTileTemp, recallTiles, shuffleRack, renamePlayer, reorderRack,
     submitPlay, passTurn, exchangeTiles, getHint, clearHint, challengeWord, removeWord,
     closeCoachAndAdvance, getPlacementsPreview, isFirstMoveOfGame
   };

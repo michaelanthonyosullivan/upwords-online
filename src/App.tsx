@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useUpwords } from './hooks/use-upwords';
+import React, { useState, useEffect, useRef } from 'react';
+import { useUpwords, OnlineConfig, OnlineRosterEntry } from './hooks/use-upwords';
 import { Header } from './components/Header';
 import { GameSettings } from './components/GameSettings';
 import { OnlineLobby } from './components/OnlineLobby';
@@ -11,26 +11,68 @@ import { MoveLog } from './components/MoveLog';
 import { CoachPanel } from './components/CoachPanel';
 import { Trophy, HelpCircle, Sparkles, RefreshCw, ShieldQuestion, CheckCircle2, XCircle } from 'lucide-react';
 import { CandidateMove } from './lib/upwords-ai';
+import { RoomData, subscribeToRoom, pushGameState, sendActionRequest, clearActionRequest } from './lib/multiplayer';
 
 export default function App() {
+  const [preGameScreen, setPreGameScreen] = useState<'mode-select' | 'local-setup' | 'online-lobby'>('mode-select');
+  const [onlineInfo, setOnlineInfo] = useState<{ roomCode: string; mySeatIndex: number } | null>(null);
+  const [room, setRoom] = useState<RoomData | null>(null);
+  const onlineGameInitRef = useRef(false);
+
+  useEffect(() => {
+    if (!onlineInfo) { setRoom(null); return; }
+    const unsub = subscribeToRoom(onlineInfo.roomCode, setRoom);
+    return unsub;
+  }, [onlineInfo?.roomCode]);
+
+  const isHost = !!(room && onlineInfo && room.seats[onlineInfo.mySeatIndex]?.clientId === room.hostId);
+  // Player index among occupied seats only (open seats don't get a player slot) —
+  // computed identically by every client from the same synced seat list, so everyone
+  // agrees on who is "player 0", "player 1", etc. regardless of which raw seat they sit in.
+  const myPlayerIndex = room && onlineInfo
+    ? room.seats.slice(0, onlineInfo.mySeatIndex).filter(s => s.type !== 'open').length
+    : 0;
+
+  const online: OnlineConfig | undefined = (onlineInfo && room) ? {
+    isHost,
+    mySeatIndex: myPlayerIndex,
+    remoteState: room.gameState ?? null,
+    onStateChange: (state) => { pushGameState(onlineInfo.roomCode, state); },
+    onRequestAction: (action) => { sendActionRequest(onlineInfo.roomCode, { ...action, requestId: Math.random().toString(36).slice(2) }); },
+    incomingActionRequest: room.actionRequest ?? null,
+    onActionRequestProcessed: () => { clearActionRequest(onlineInfo.roomCode); }
+  } : undefined;
+
   const {
     board, players, tileBag, currentTurn, history, gameEnded, winnerId,
     dictLoaded, dictLoadingProgress, gameStarted, isAiThinking,
     placements, activeRack, hint, coachAnalysis, lastPlayPlacements,
     coachEnabled, setCoachEnabled,
-    startNewGame, placeTileTemp, removeTileTemp, recallTiles, shuffleRack, renamePlayer, reorderRack,
+    startNewGame, startOnlineGame, placeTileTemp, removeTileTemp, recallTiles, shuffleRack, renamePlayer, reorderRack,
     submitPlay, passTurn, exchangeTiles, getHint, clearHint, challengeWord, removeWord, humanMovesReady,
     turnSnapshots, rewindToTurn,
     closeCoachAndAdvance, getPlacementsPreview
-  } = useUpwords();
+  } = useUpwords(online);
+
+  // Host-only: once the lobby marks the room "playing", initialize the shared
+  // game state exactly once from the room's seat roster.
+  useEffect(() => {
+    if (!room || !onlineInfo || !isHost) return;
+    if (room.status !== 'playing') return;
+    if (room.gameState) return; // already initialized
+    if (onlineGameInitRef.current) return;
+    onlineGameInitRef.current = true;
+    const roster: OnlineRosterEntry[] = room.seats
+      .filter(s => s.type !== 'open')
+      .map(s => ({ name: s.name, isAi: s.type === 'ai', aiLevel: s.aiLevel }));
+    startOnlineGame(roster);
+  }, [room?.status, room?.gameState, isHost]);
 
   // Index-based tile selection fixes the duplicate-letter bug
   const [selectedTile, setSelectedTile] = useState<{ letter: string; idx: number } | null>(null);
   const [bestMovePreview, setBestMovePreview] = useState<CandidateMove | null>(null);
   const [challengeResult, setChallengeResult] = useState<{ word: string; success: boolean } | null>(null);
   const [noHintAvailable, setNoHintAvailable] = useState(false);
-  const [preGameScreen, setPreGameScreen] = useState<'mode-select' | 'local-setup' | 'online-lobby'>('mode-select');
-  const [onlineInfo, setOnlineInfo] = useState<{ roomCode: string; mySeatIndex: number } | null>(null);
 
   useEffect(() => {
     setNoHintAvailable(false);
