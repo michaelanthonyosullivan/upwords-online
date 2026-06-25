@@ -42,7 +42,7 @@ function generateRoomCode(): string {
 
 function emptySeats(hostId: string, hostName: string): RoomSeat[] {
   return [
-    { type: 'human', clientId: hostId, name: hostName || 'Host', aiLevel: undefined },
+    { type: 'human', clientId: hostId, name: hostName || 'Host' },
     { type: 'open', clientId: null, name: '' },
     { type: 'open', clientId: null, name: '' },
     { type: 'open', clientId: null, name: '' }
