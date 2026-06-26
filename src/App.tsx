@@ -16,7 +16,12 @@ import { RoomData, subscribeToRoom, pushGameState, sendActionRequest, clearActio
 // Bumped manually with each deploy — lets us confirm two different browsers
 // are actually running the same build before debugging "it doesn't work"
 // reports, rather than guessing about stale caches.
-const BUILD_TAG = 'sync-v3-aiLevel-fix';
+const BUILD_TAG = 'sync-v4-json-encode';
+
+function safeParse<T>(json: string | undefined | null): T | null {
+  if (!json) return null;
+  try { return JSON.parse(json) as T; } catch { return null; }
+}
 
 export default function App() {
   const [preGameScreen, setPreGameScreen] = useState<'mode-select' | 'local-setup' | 'online-lobby'>('mode-select');
@@ -43,7 +48,7 @@ export default function App() {
   const online: OnlineConfig | undefined = (onlineInfo && room) ? {
     isHost,
     mySeatIndex: myPlayerIndex,
-    remoteState: room.gameState ?? null,
+    remoteState: safeParse(room.gameStateJson),
     onStateChange: (state) => {
       pushGameState(onlineInfo.roomCode, state).catch(e => setSyncError(`Failed to publish game state: ${e?.message || e}`));
     },
@@ -51,7 +56,7 @@ export default function App() {
       sendActionRequest(onlineInfo.roomCode, { ...action, requestId: Math.random().toString(36).slice(2) })
         .catch(e => setSyncError(`Failed to send move: ${e?.message || e}`));
     },
-    incomingActionRequest: room.actionRequest ?? null,
+    incomingActionRequest: safeParse(room.actionRequestJson),
     onActionRequestProcessed: () => {
       clearActionRequest(onlineInfo.roomCode).catch(() => {});
     }
@@ -73,14 +78,14 @@ export default function App() {
   useEffect(() => {
     if (!room || !onlineInfo || !isHost) return;
     if (room.status !== 'playing') return;
-    if (room.gameState) return; // already initialized
+    if (room.gameStateJson) return; // already initialized
     if (onlineGameInitRef.current) return;
     onlineGameInitRef.current = true;
     const roster: OnlineRosterEntry[] = room.seats
       .filter(s => s.type !== 'open')
       .map(s => ({ name: s.name, isAi: s.type === 'ai', aiLevel: s.aiLevel }));
     startOnlineGame(roster);
-  }, [room?.status, room?.gameState, isHost]);
+  }, [room?.status, room?.gameStateJson, isHost]);
 
   // Index-based tile selection fixes the duplicate-letter bug
   const [selectedTile, setSelectedTile] = useState<{ letter: string; idx: number } | null>(null);
@@ -196,7 +201,7 @@ export default function App() {
               </div>
               <div className="flex justify-between gap-3">
                 <span className="text-slate-500">Game state published</span>
-                <span className={room?.gameState ? 'text-emerald-400' : 'text-amber-400'}>{room?.gameState ? 'yes' : 'not yet'}</span>
+                <span className={room?.gameStateJson ? 'text-emerald-400' : 'text-amber-400'}>{room?.gameStateJson ? 'yes' : 'not yet'}</span>
               </div>
               <div className="flex justify-between gap-3">
                 <span className="text-slate-500">My role</span>

@@ -15,8 +15,8 @@ export interface RoomData {
   createdAt: number;
   status: 'lobby' | 'playing' | 'ended';
   seats: RoomSeat[];
-  gameState?: any;
-  actionRequest?: any;
+  gameStateJson?: string;
+  actionRequestJson?: string;
 }
 
 const CLIENT_ID_KEY = 'upwords_client_id';
@@ -118,13 +118,13 @@ export async function setRoomStatus(code: string, status: RoomData['status']): P
 }
 
 export async function pushGameState(code: string, gameState: any): Promise<void> {
-  await update(ref(db, `rooms/${code.toUpperCase()}`), { gameState });
+  await update(ref(db, `rooms/${code.toUpperCase()}`), { gameStateJson: JSON.stringify(gameState) });
 }
 
 export async function sendActionRequest(code: string, request: any): Promise<void> {
-  await set(ref(db, `rooms/${code.toUpperCase()}/actionRequest`), request);
+  await set(ref(db, `rooms/${code.toUpperCase()}/actionRequestJson`), JSON.stringify(request));
 }
 
 export async function clearActionRequest(code: string): Promise<void> {
-  await set(ref(db, `rooms/${code.toUpperCase()}/actionRequest`), null);
+  await set(ref(db, `rooms/${code.toUpperCase()}/actionRequestJson`), null);
 }
