@@ -253,10 +253,13 @@ export function useUpwords(online?: OnlineConfig) {
   const startOnlineGame = (roster: OnlineRosterEntry[]) => {
     setCoachEnabled(false); // coach analysis isn't meaningful (or synced) across remote players
     const bag = generateShuffledBag();
-    const newPlayers: Player[] = roster.map((r, idx) => ({
-      id: idx, name: r.name.trim() || `Player ${idx + 1}`, score: 0, rack: bag.splice(0, 7),
-      isAi: r.isAi, aiLevel: r.aiLevel
-    }));
+    const newPlayers: Player[] = roster.map((r, idx) => {
+      const p: Player = {
+        id: idx, name: r.name.trim() || `Player ${idx + 1}`, score: 0, rack: bag.splice(0, 7), isAi: r.isAi
+      };
+      if (r.isAi && r.aiLevel) p.aiLevel = r.aiLevel; // omit entirely for humans — Firebase rejects undefined
+      return p;
+    });
     setBoard(createEmptyBoard());
     setPlayers(newPlayers);
     setTileBag(bag);

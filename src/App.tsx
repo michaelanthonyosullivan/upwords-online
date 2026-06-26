@@ -16,7 +16,7 @@ import { RoomData, subscribeToRoom, pushGameState, sendActionRequest, clearActio
 // Bumped manually with each deploy — lets us confirm two different browsers
 // are actually running the same build before debugging "it doesn't work"
 // reports, rather than guessing about stale caches.
-const BUILD_TAG = 'sync-v2-2026-06-25';
+const BUILD_TAG = 'sync-v3-aiLevel-fix';
 
 export default function App() {
   const [preGameScreen, setPreGameScreen] = useState<'mode-select' | 'local-setup' | 'online-lobby'>('mode-select');
@@ -38,14 +38,23 @@ export default function App() {
     ? room.seats.slice(0, onlineInfo.mySeatIndex).filter(s => s.type !== 'open').length
     : 0;
 
+  const [syncError, setSyncError] = useState<string | null>(null);
+
   const online: OnlineConfig | undefined = (onlineInfo && room) ? {
     isHost,
     mySeatIndex: myPlayerIndex,
     remoteState: room.gameState ?? null,
-    onStateChange: (state) => { pushGameState(onlineInfo.roomCode, state); },
-    onRequestAction: (action) => { sendActionRequest(onlineInfo.roomCode, { ...action, requestId: Math.random().toString(36).slice(2) }); },
+    onStateChange: (state) => {
+      pushGameState(onlineInfo.roomCode, state).catch(e => setSyncError(`Failed to publish game state: ${e?.message || e}`));
+    },
+    onRequestAction: (action) => {
+      sendActionRequest(onlineInfo.roomCode, { ...action, requestId: Math.random().toString(36).slice(2) })
+        .catch(e => setSyncError(`Failed to send move: ${e?.message || e}`));
+    },
     incomingActionRequest: room.actionRequest ?? null,
-    onActionRequestProcessed: () => { clearActionRequest(onlineInfo.roomCode); }
+    onActionRequestProcessed: () => {
+      clearActionRequest(onlineInfo.roomCode).catch(() => {});
+    }
   } : undefined;
 
   const {
@@ -198,6 +207,11 @@ export default function App() {
                 <span className="text-slate-600">{BUILD_TAG}</span>
               </div>
             </div>
+            {syncError && (
+              <div className="mt-3 p-2.5 bg-red-500/10 border border-red-500/20 rounded-lg text-[10px] text-red-400 font-mono">
+                {syncError}
+              </div>
+            )}
             <p className="text-[10px] text-slate-500 mt-4 text-center">
               If this doesn't update within a few seconds, try refreshing the page.
             </p>
