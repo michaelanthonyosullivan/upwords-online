@@ -13,6 +13,11 @@ import { Trophy, HelpCircle, Sparkles, RefreshCw, ShieldQuestion, CheckCircle2, 
 import { CandidateMove } from './lib/upwords-ai';
 import { RoomData, subscribeToRoom, pushGameState, sendActionRequest, clearActionRequest } from './lib/multiplayer';
 
+// Bumped manually with each deploy — lets us confirm two different browsers
+// are actually running the same build before debugging "it doesn't work"
+// reports, rather than guessing about stale caches.
+const BUILD_TAG = 'sync-v2-2026-06-25';
+
 export default function App() {
   const [preGameScreen, setPreGameScreen] = useState<'mode-select' | 'local-setup' | 'online-lobby'>('mode-select');
   const [onlineInfo, setOnlineInfo] = useState<{ roomCode: string; mySeatIndex: number } | null>(null);
@@ -188,6 +193,10 @@ export default function App() {
                 <span className="text-slate-500">My role</span>
                 <span className="text-slate-300">{isHost ? `host (player ${myPlayerIndex + 1})` : `player ${myPlayerIndex + 1}`}</span>
               </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-slate-500">Build</span>
+                <span className="text-slate-600">{BUILD_TAG}</span>
+              </div>
             </div>
             <p className="text-[10px] text-slate-500 mt-4 text-center">
               If this doesn't update within a few seconds, try refreshing the page.
@@ -306,6 +315,7 @@ export default function App() {
 
       <footer className="shrink-0 py-3 text-center">
         <p className="text-[10px] italic text-slate-500">©MMXXVI Michael O'Sullivan</p>
+        <p className="text-[8px] text-slate-700 font-mono mt-0.5">{BUILD_TAG}</p>
       </footer>
 
       {/* Game-over modal */}
