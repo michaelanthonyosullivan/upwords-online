@@ -22,12 +22,17 @@ export interface RoomData {
 const CLIENT_ID_KEY = 'upwords_client_id';
 const ROOM_CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no 0/O or 1/I — easy to read aloud/type
 
-/** A stable per-browser identity so reloading the page doesn't lose your seat. */
+/** A stable per-tab identity so reloading the page doesn't lose your seat.
+ *  Uses sessionStorage (not localStorage) deliberately — localStorage is
+ *  shared across every tab of the same browser, so testing host and guest
+ *  in two tabs on one computer would otherwise make them collide into the
+ *  same identity. sessionStorage is scoped to one tab, while still
+ *  surviving a refresh of that same tab. */
 export function getClientId(): string {
-  let id = localStorage.getItem(CLIENT_ID_KEY);
+  let id = sessionStorage.getItem(CLIENT_ID_KEY);
   if (!id) {
     id = Math.random().toString(36).slice(2) + Date.now().toString(36);
-    localStorage.setItem(CLIENT_ID_KEY, id);
+    sessionStorage.setItem(CLIENT_ID_KEY, id);
   }
   return id;
 }

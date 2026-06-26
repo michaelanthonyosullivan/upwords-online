@@ -11,12 +11,12 @@ import { MoveLog } from './components/MoveLog';
 import { CoachPanel } from './components/CoachPanel';
 import { Trophy, HelpCircle, Sparkles, RefreshCw, ShieldQuestion, CheckCircle2, XCircle } from 'lucide-react';
 import { CandidateMove } from './lib/upwords-ai';
-import { RoomData, subscribeToRoom, pushGameState, sendActionRequest, clearActionRequest } from './lib/multiplayer';
+import { RoomData, subscribeToRoom, pushGameState, sendActionRequest, clearActionRequest, getClientId } from './lib/multiplayer';
 
 // Bumped manually with each deploy — lets us confirm two different browsers
 // are actually running the same build before debugging "it doesn't work"
 // reports, rather than guessing about stale caches.
-const BUILD_TAG = 'sync-v4-json-encode';
+const BUILD_TAG = 'sync-v5-session-identity';
 
 function safeParse<T>(json: string | undefined | null): T | null {
   if (!json) return null;
@@ -228,6 +228,12 @@ export default function App() {
         </div>
       ) : (
         <main className="flex-1 flex flex-col lg:flex-row p-4 md:p-6 gap-6 max-w-7xl w-full mx-auto min-h-0">
+
+          {onlineInfo && (
+            <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 bg-black/90 border border-amber-500/40 rounded-lg px-3 py-2 text-[10px] font-mono text-amber-300 max-w-[95vw] overflow-x-auto whitespace-nowrap">
+              clientStoredId={getClientId()} | isHost={String(isHost)} | mySeatIndex(raw)={onlineInfo.mySeatIndex} | myPlayerIndex={myPlayerIndex} | hostId={room?.hostId} | currentTurn={currentTurn} | turnPlayer={players[currentTurn]?.name}({String(players[currentTurn]?.isAi)}) | players=[{players.map(p => `${p.name}:${p.isAi ? 'ai' : 'human'}`).join(', ')}]
+            </div>
+          )}
 
           {/* Board + Rack */}
           <div className="flex-1 flex flex-col items-center gap-4 min-h-0 justify-center">
