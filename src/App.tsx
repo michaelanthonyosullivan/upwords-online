@@ -217,10 +217,6 @@ export default function App() {
                 <span className="text-slate-500">My role</span>
                 <span className="text-slate-300">{isHost ? `host (player ${myPlayerIndex + 1})` : `player ${myPlayerIndex + 1}`}</span>
               </div>
-              <div className="flex justify-between gap-3">
-                <span className="text-slate-500">Build</span>
-                <span className="text-slate-600">{BUILD_TAG}</span>
-              </div>
             </div>
             {syncError && (
               <div className="mt-3 p-2.5 bg-red-500/10 border border-red-500/20 rounded-lg text-[10px] text-red-400 font-mono">
@@ -344,7 +340,6 @@ export default function App() {
 
       <footer className="shrink-0 py-3 text-center">
         <p className="text-[10px] italic text-slate-500">©MMXXVI Michael O'Sullivan</p>
-        <p className="text-[8px] text-slate-700 font-mono mt-0.5">{BUILD_TAG}</p>
       </footer>
 
       {/* Game-over modal */}
