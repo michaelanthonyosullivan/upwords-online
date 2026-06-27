@@ -80,12 +80,20 @@ export async function joinRoom(code: string, playerName: string): Promise<number
   const roomRef = ref(db, `rooms/${code.toUpperCase()}`);
 
   let claimedIndex: number | null = null;
+  let lateJoinBlocked = false;
   const result = await runTransaction(roomRef, (room: RoomData | null) => {
     if (!room) return room; // room doesn't exist — abort, leave untouched
     // Already seated in this room? Just reconnect to the same seat.
     const existingIdx = room.seats.findIndex(s => s.clientId === clientId);
     if (existingIdx !== -1) {
       claimedIndex = existingIdx;
+      return room;
+    }
+    if (room.status !== 'lobby') {
+      // The game's roster was already locked in when it started — claiming a
+      // "new" seat now would create a player with no actual game presence.
+      lateJoinBlocked = true;
+      claimedIndex = null;
       return room;
     }
     const openIdx = room.seats.findIndex(s => s.type === 'open');
@@ -99,6 +107,7 @@ export async function joinRoom(code: string, playerName: string): Promise<number
   });
 
   if (!result.committed || !result.snapshot.exists()) return null;
+  if (lateJoinBlocked) throw new Error('This game has already started — ask the host to create a new room.');
   return claimedIndex;
 }
 
