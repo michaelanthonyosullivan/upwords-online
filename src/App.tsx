@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useUpwords, OnlineConfig, OnlineRosterEntry } from './hooks/use-upwords';
 import { Header } from './components/Header';
 import { GameSettings } from './components/GameSettings';
@@ -16,7 +16,7 @@ import { RoomData, subscribeToRoom, pushGameState, sendActionRequest, clearActio
 // Bumped manually with each deploy — lets us confirm two different browsers
 // are actually running the same build before debugging "it doesn't work"
 // reports, rather than guessing about stale caches.
-const BUILD_TAG = 'sync-v7-no-late-join';
+const BUILD_TAG = 'sync-v8-memo-fix';
 
 function safeParse<T>(json: string | undefined | null): T | null {
   if (!json) return null;
@@ -45,10 +45,20 @@ export default function App() {
 
   const [syncError, setSyncError] = useState<string | null>(null);
 
+  // Memoized specifically on the underlying JSON string — JSON.parse() always
+  // returns a new object even when called twice on the identical string, so
+  // without this, anything depending on these values would see a "new"
+  // object on every single render, regardless of whether the data actually
+  // changed (e.g. the guest selecting a tile, which is unrelated to the
+  // synced game state, would still look like "new state arrived" and trigger
+  // a reset of in-progress placements).
+  const remoteState = useMemo(() => safeParse<any>(room?.gameStateJson), [room?.gameStateJson]);
+  const incomingActionRequest = useMemo(() => safeParse<any>(room?.actionRequestJson), [room?.actionRequestJson]);
+
   const online: OnlineConfig | undefined = (onlineInfo && room) ? {
     isHost,
     mySeatIndex: myPlayerIndex,
-    remoteState: safeParse(room.gameStateJson),
+    remoteState,
     onStateChange: (state) => {
       pushGameState(onlineInfo.roomCode, state).catch(e => setSyncError(`Failed to publish game state: ${e?.message || e}`));
     },
@@ -56,7 +66,7 @@ export default function App() {
       sendActionRequest(onlineInfo.roomCode, { ...action, requestId: Math.random().toString(36).slice(2) })
         .catch(e => setSyncError(`Failed to send move: ${e?.message || e}`));
     },
-    incomingActionRequest: safeParse(room.actionRequestJson),
+    incomingActionRequest,
     onActionRequestProcessed: () => {
       clearActionRequest(onlineInfo.roomCode).catch(() => {});
     }
