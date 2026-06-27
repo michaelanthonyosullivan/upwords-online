@@ -51,7 +51,8 @@ export interface SharedGameState {
 export type OnlineAction =
   | { type: 'play'; placements: PlayPlacement[] }
   | { type: 'pass' }
-  | { type: 'exchange'; tiles: string[] };
+  | { type: 'exchange'; tiles: string[] }
+  | { type: 'rewind'; turnIndex: number };
 
 export interface OnlineConfig {
   isHost: boolean;
@@ -163,6 +164,10 @@ export function useUpwords(online?: OnlineConfig) {
   }, [currentTurn, gameStarted]);
 
   const rewindToTurn = (turnIndex: number) => {
+    if (online && !online.isHost) {
+      online.onRequestAction?.({ type: 'rewind', turnIndex });
+      return;
+    }
     const snap = turnSnapshots[turnIndex];
     if (!snap) return;
     setBoard(copyBoard(snap.board));
@@ -243,6 +248,7 @@ export function useUpwords(online?: OnlineConfig) {
     if (req.type === 'play') submitPlay(req.placements, true);
     else if (req.type === 'pass') passTurn(true);
     else if (req.type === 'exchange') exchangeTiles(req.tiles, true);
+    else if (req.type === 'rewind') rewindToTurn(req.turnIndex);
 
     online.onActionRequestProcessed?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps

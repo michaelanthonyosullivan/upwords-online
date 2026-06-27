@@ -16,7 +16,7 @@ import { RoomData, subscribeToRoom, pushGameState, sendActionRequest, clearActio
 // Bumped manually with each deploy — lets us confirm two different browsers
 // are actually running the same build before debugging "it doesn't work"
 // reports, rather than guessing about stale caches.
-const BUILD_TAG = 'sync-v9-silos-and-coach';
+const BUILD_TAG = 'sync-v10-host-rewind';
 
 function safeParse<T>(json: string | undefined | null): T | null {
   if (!json) return null;
