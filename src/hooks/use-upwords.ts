@@ -26,6 +26,15 @@ interface GameSnapshot {
 // mutating anything locally, send an action request that the host receives
 // and applies through the exact same submitPlay/passTurn/exchangeTiles used
 // for local play.
+export interface MoveFeedback {
+  forPlayerId: number;
+  userWord: string;
+  userScore: number;
+  bestWord: string;
+  bestScore: number;
+  moveSeq: number;
+}
+
 export interface SharedGameState {
   board: Board;
   players: Player[];
@@ -36,6 +45,7 @@ export interface SharedGameState {
   gameEnded: boolean;
   winnerId: number | null;
   lastPlayPlacements: { r: number; c: number }[];
+  pendingFeedback?: MoveFeedback | null;
 }
 
 export type OnlineAction =
@@ -107,6 +117,7 @@ export function useUpwords(online?: OnlineConfig) {
   }, [board]);
 
   const [hookError, setHookError] = useState<string | null>(null);
+  const [pendingFeedback, setPendingFeedback] = useState<MoveFeedback | null>(null);
 
   const calculateHumanMoves = useCallback(() => {
     if (!gameStarted || gameEnded) return;
@@ -176,10 +187,10 @@ export function useUpwords(online?: OnlineConfig) {
     if (!online?.isHost || !gameStarted) return;
     online.onStateChange?.({
       board, players, tileBag, currentTurn, consecutivePasses, history,
-      gameEnded, winnerId, lastPlayPlacements
+      gameEnded, winnerId, lastPlayPlacements, pendingFeedback
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [board, players, tileBag, currentTurn, consecutivePasses, history, gameEnded, winnerId, lastPlayPlacements, gameStarted]);
+  }, [board, players, tileBag, currentTurn, consecutivePasses, history, gameEnded, winnerId, lastPlayPlacements, pendingFeedback, gameStarted]);
 
   // ── Online sync: guests mirror whatever the host publishes ─────────────────
   useEffect(() => {
@@ -195,11 +206,29 @@ export function useUpwords(online?: OnlineConfig) {
     setGameEnded(remote.gameEnded);
     setWinnerId(remote.winnerId);
     setLastPlayPlacements(remote.lastPlayPlacements);
+    setPendingFeedback(remote.pendingFeedback ?? null);
     setGameStarted(true);
     setPlacements([]);
     setActiveRack([...(remote.players[online.mySeatIndex]?.rack || [])]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [online?.remoteState]);
+
+  // ── Online sync: show coach feedback only on the screen of the player it's
+  // actually for — works for host and guest alike, since the host's own moves
+  // populate pendingFeedback locally and a guest's arrive via remoteState above.
+  const lastShownFeedbackSeqRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!online || !pendingFeedback) return;
+    if (pendingFeedback.forPlayerId !== online.mySeatIndex) return;
+    if (lastShownFeedbackSeqRef.current === pendingFeedback.moveSeq) return;
+    lastShownFeedbackSeqRef.current = pendingFeedback.moveSeq;
+    setCoachAnalysis({
+      userPlay: { placements: [], score: pendingFeedback.userScore, word: pendingFeedback.userWord },
+      bestPlay: pendingFeedback.bestWord
+        ? ({ word: pendingFeedback.bestWord, score: pendingFeedback.bestScore, placements: [], wordsFormed: [] } as any)
+        : null
+    });
+  }, [pendingFeedback, online?.mySeatIndex]);
 
   // ── Online sync: host receives and applies action requests from guests ────
   const lastProcessedRequestRef = useRef<string | null>(null);
@@ -211,9 +240,9 @@ export function useUpwords(online?: OnlineConfig) {
     if (lastProcessedRequestRef.current === reqKey) return;
     lastProcessedRequestRef.current = reqKey;
 
-    if (req.type === 'play') submitPlay(req.placements);
-    else if (req.type === 'pass') passTurn();
-    else if (req.type === 'exchange') exchangeTiles(req.tiles);
+    if (req.type === 'play') submitPlay(req.placements, true);
+    else if (req.type === 'pass') passTurn(true);
+    else if (req.type === 'exchange') exchangeTiles(req.tiles, true);
 
     online.onActionRequestProcessed?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -257,7 +286,7 @@ export function useUpwords(online?: OnlineConfig) {
 
   /** Host-only: initializes an online game from the room's seat roster (mixed humans + AI). */
   const startOnlineGame = (roster: OnlineRosterEntry[]) => {
-    setCoachEnabled(false); // coach analysis isn't meaningful (or synced) across remote players
+    setCoachEnabled(true);
     const bag = generateShuffledBag();
     const newPlayers: Player[] = roster.map((r, idx) => {
       const p: Player = {
@@ -354,7 +383,7 @@ export function useUpwords(online?: OnlineConfig) {
   // Accepts an optional placementsOverride so a hint can be placed and
   // submitted in one atomic call (avoids relying on placeTileTemp's state
   // updates having applied yet, which they won't have within the same tick).
-  const submitPlay = (placementsOverride?: PlayPlacement[]) => {
+  const submitPlay = (placementsOverride?: PlayPlacement[], bypassOwnTurnCheck = false) => {
     const activePlacements = placementsOverride ?? placements;
     if (activePlacements.length === 0) return { success: false, error: 'No tiles placed.' };
 
@@ -364,6 +393,13 @@ export function useUpwords(online?: OnlineConfig) {
       setPlacements([]);
       setHint(null);
       return { success: true };
+    }
+
+    // Host path: if this was triggered by the host's own UI (not by processing
+    // a remote player's request, which legitimately acts on a different
+    // seat's turn), it must actually be the host's own seat's turn.
+    if (online?.isHost && !bypassOwnTurnCheck && currentTurn !== online.mySeatIndex) {
+      return { success: false, error: 'Not your turn.' };
     }
 
     const player = players[currentTurn];
@@ -419,10 +455,24 @@ export function useUpwords(online?: OnlineConfig) {
     setHint(null);
 
     if (coachEnabled) {
-      setCoachAnalysis({
-        userPlay: { placements: activePlacements, score: result.score!, word: allWords[0] || '' },
-        bestPlay: bestMoveRef.current
-      });
+      if (online) {
+        // Don't block turn progression on a feedback popup in a shared game —
+        // publish it so the relevant player sees it, and move straight on.
+        setPendingFeedback({
+          forPlayerId: player.id,
+          userWord: allWords[0] || '',
+          userScore: result.score!,
+          bestWord: bestMoveRef.current?.word || '',
+          bestScore: bestMoveRef.current?.score ?? 0,
+          moveSeq: historyItem.turnIndex
+        });
+        advanceTurn(updatedPlayers, nextBag, 0);
+      } else {
+        setCoachAnalysis({
+          userPlay: { placements: activePlacements, score: result.score!, word: allWords[0] || '' },
+          bestPlay: bestMoveRef.current
+        });
+      }
     } else {
       advanceTurn(updatedPlayers, nextBag, 0);
     }
@@ -430,13 +480,14 @@ export function useUpwords(online?: OnlineConfig) {
     return { success: true };
   };
 
-  const passTurn = () => {
+  const passTurn = (bypassOwnTurnCheck = false) => {
     if (online && !online.isHost) {
       if (currentTurn !== online.mySeatIndex) return;
       recallTiles(); // restore any tentatively-placed tiles to the rack before passing
       online.onRequestAction?.({ type: 'pass' });
       return;
     }
+    if (online?.isHost && !bypassOwnTurnCheck && currentTurn !== online.mySeatIndex) return;
     const player = players[currentTurn];
     if (player.isAi) return;
     recallTiles();
@@ -450,7 +501,7 @@ export function useUpwords(online?: OnlineConfig) {
     else advanceTurn(players, tileBag, nextPasses);
   };
 
-  const exchangeTiles = (tilesToExchange: string[]) => {
+  const exchangeTiles = (tilesToExchange: string[], bypassOwnTurnCheck = false) => {
     if (tilesToExchange.length === 0) return { success: false, error: 'No tiles selected.' };
     if (tileBag.length < tilesToExchange.length)
       return { success: false, error: `Not enough tiles in bag (${tileBag.length} left).` };
@@ -460,6 +511,10 @@ export function useUpwords(online?: OnlineConfig) {
       recallTiles();
       online.onRequestAction?.({ type: 'exchange', tiles: tilesToExchange });
       return { success: true };
+    }
+
+    if (online?.isHost && !bypassOwnTurnCheck && currentTurn !== online.mySeatIndex) {
+      return { success: false, error: 'Not your turn.' };
     }
 
     const player = players[currentTurn];
@@ -497,7 +552,7 @@ export function useUpwords(online?: OnlineConfig) {
 
   const closeCoachAndAdvance = () => {
     setCoachAnalysis(null);
-    advanceTurn(players, tileBag, 0);
+    if (!online) advanceTurn(players, tileBag, 0);
   };
 
   const advanceTurn = (currentPlayers: Player[], currentBag: string[], passesCount: number) => {
@@ -613,7 +668,12 @@ export function useUpwords(online?: OnlineConfig) {
   };
 
   const getHint = (): boolean => {
-    if (players[currentTurn]?.isAi || gameEnded) return false;
+    if (gameEnded) return false;
+    if (online) {
+      if (currentTurn !== online.mySeatIndex) return false;
+    } else if (players[currentTurn]?.isAi) {
+      return false;
+    }
     if (bestMoveRef.current) { setHint(bestMoveRef.current); return true; }
     return false;
   };

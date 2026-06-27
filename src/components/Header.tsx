@@ -6,9 +6,10 @@ interface HeaderProps {
   gameStarted: boolean;
   winnerId: number | null;
   players: any[];
+  roomCode?: string | null;
 }
 
-export function Header({ onRestart, gameStarted }: HeaderProps) {
+export function Header({ onRestart, gameStarted, roomCode }: HeaderProps) {
   const [showRules, setShowRules] = useState(false);
 
   return (
@@ -23,6 +24,12 @@ export function Header({ onRestart, gameStarted }: HeaderProps) {
             Upwords
           </h1>
         </div>
+        {roomCode && (
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-600/10 border border-red-500/20 ml-2">
+            <span className="text-[8px] uppercase tracking-wider text-slate-500 font-bold">Room</span>
+            <span className="text-xs font-mono font-bold text-red-300 tracking-[0.15em]">{roomCode}</span>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-3">

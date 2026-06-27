@@ -11,12 +11,12 @@ import { MoveLog } from './components/MoveLog';
 import { CoachPanel } from './components/CoachPanel';
 import { Trophy, HelpCircle, Sparkles, RefreshCw, ShieldQuestion, CheckCircle2, XCircle } from 'lucide-react';
 import { CandidateMove } from './lib/upwords-ai';
-import { RoomData, subscribeToRoom, pushGameState, sendActionRequest, clearActionRequest, getClientId } from './lib/multiplayer';
+import { RoomData, subscribeToRoom, pushGameState, sendActionRequest, clearActionRequest } from './lib/multiplayer';
 
 // Bumped manually with each deploy — lets us confirm two different browsers
 // are actually running the same build before debugging "it doesn't work"
 // reports, rather than guessing about stale caches.
-const BUILD_TAG = 'sync-v8-memo-fix';
+const BUILD_TAG = 'sync-v9-silos-and-coach';
 
 function safeParse<T>(json: string | undefined | null): T | null {
   if (!json) return null;
@@ -161,7 +161,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#11161f] text-slate-100">
-      <Header onRestart={handleRestart} gameStarted={gameStarted} winnerId={winnerId} players={players} />
+      <Header onRestart={handleRestart} gameStarted={gameStarted} winnerId={winnerId} players={players} roomCode={onlineInfo?.roomCode} />
 
       {!gameStarted && !onlineInfo && preGameScreen === 'mode-select' ? (
         <div className="flex-1 flex flex-col items-center justify-center p-6 md:p-12">
@@ -238,15 +238,6 @@ export default function App() {
         </div>
       ) : (
         <main className="flex-1 flex flex-col lg:flex-row p-4 md:p-6 gap-6 max-w-7xl w-full mx-auto min-h-0">
-
-          {onlineInfo && (
-            <div
-              style={{ pointerEvents: 'none' }}
-              className="fixed bottom-0 left-0 right-0 z-50 bg-black/95 border-t border-amber-500/40 px-3 py-1.5 text-[9px] font-mono text-amber-300 overflow-x-auto whitespace-nowrap"
-            >
-              clientStoredId={getClientId()} | isHost={String(isHost)} | mySeatIndex(raw)={onlineInfo.mySeatIndex} | myPlayerIndex={myPlayerIndex} | hostId={room?.hostId} | currentTurn={currentTurn} | turnPlayer={players[currentTurn]?.name}({String(players[currentTurn]?.isAi)}) | humanMovesReady={String(humanMovesReady)} | hookError={hookError ?? 'none'} | players=[{players.map(p => `${p.name}:${p.isAi ? 'ai' : 'human'}`).join(', ')}]
-            </div>
-          )}
 
           {/* Board + Rack */}
           <div className="flex-1 flex flex-col items-center gap-4 min-h-0 justify-center">
@@ -341,7 +332,7 @@ export default function App() {
               hasPlacements={placements.length > 0}
               coachEnabled={coachEnabled}
               onToggleCoach={setCoachEnabled}
-              isAiTurn={!!players[currentTurn]?.isAi}
+              isAiTurn={online ? currentTurn !== online.mySeatIndex : !!players[currentTurn]?.isAi}
               humanMovesReady={humanMovesReady}
               noHintAvailable={noHintAvailable}
             />
