@@ -106,16 +106,22 @@ export function useUpwords(online?: OnlineConfig) {
     return true;
   }, [board]);
 
+  const [hookError, setHookError] = useState<string | null>(null);
+
   const calculateHumanMoves = useCallback(() => {
     if (!gameStarted || gameEnded) return;
     const active = players[currentTurn];
     if (!active || active.isAi) { bestMoveRef.current = null; allMovesRef.current = []; setHumanMovesReady(false); return; }
     setHumanMovesReady(false);
     setTimeout(() => {
-      const moves = generateAllLegalMoves(board, active.rack, isFirstMoveOfGame());
-      allMovesRef.current = moves;
-      bestMoveRef.current = moves[0] || null;
-      setHumanMovesReady(true);
+      try {
+        const moves = generateAllLegalMoves(board, active.rack, isFirstMoveOfGame());
+        allMovesRef.current = moves;
+        bestMoveRef.current = moves[0] || null;
+        setHumanMovesReady(true);
+      } catch (e: any) {
+        setHookError(`calculateHumanMoves: ${e?.message || e}`);
+      }
     }, 100);
   }, [board, players, currentTurn, gameStarted, gameEnded, isFirstMoveOfGame]);
 
@@ -594,7 +600,7 @@ export function useUpwords(online?: OnlineConfig) {
         }
       }
     };
-    perform();
+    perform().catch((e: any) => setHookError(`AI turn: ${e?.message || e}`));
   }, [currentTurn, gameStarted, gameEnded, coachAnalysis, online?.isHost]);
 
   const endGame = (currentPlayers: Player[], _bag: string[]) => {
@@ -642,7 +648,7 @@ export function useUpwords(online?: OnlineConfig) {
     board, players, tileBag, currentTurn, history, gameEnded, winnerId,
     dictLoaded, dictLoadingProgress, gameStarted, isAiThinking,
     placements, activeRack, hint, coachAnalysis, lastPlayPlacements,
-    coachEnabled, setCoachEnabled, customWordsVersion, humanMovesReady, turnSnapshots, rewindToTurn,
+    coachEnabled, setCoachEnabled, customWordsVersion, humanMovesReady, hookError, turnSnapshots, rewindToTurn,
     startNewGame, startOnlineGame, placeTileTemp, removeTileTemp, recallTiles, shuffleRack, renamePlayer, reorderRack,
     submitPlay, passTurn, exchangeTiles, getHint, clearHint, challengeWord, removeWord,
     closeCoachAndAdvance, getPlacementsPreview, isFirstMoveOfGame

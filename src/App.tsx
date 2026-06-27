@@ -16,7 +16,7 @@ import { RoomData, subscribeToRoom, pushGameState, sendActionRequest, clearActio
 // Bumped manually with each deploy — lets us confirm two different browsers
 // are actually running the same build before debugging "it doesn't work"
 // reports, rather than guessing about stale caches.
-const BUILD_TAG = 'sync-v5-session-identity';
+const BUILD_TAG = 'sync-v6-debug-hardening';
 
 function safeParse<T>(json: string | undefined | null): T | null {
   if (!json) return null;
@@ -68,7 +68,7 @@ export default function App() {
     placements, activeRack, hint, coachAnalysis, lastPlayPlacements,
     coachEnabled, setCoachEnabled,
     startNewGame, startOnlineGame, placeTileTemp, removeTileTemp, recallTiles, shuffleRack, renamePlayer, reorderRack,
-    submitPlay, passTurn, exchangeTiles, getHint, clearHint, challengeWord, removeWord, humanMovesReady,
+    submitPlay, passTurn, exchangeTiles, getHint, clearHint, challengeWord, removeWord, humanMovesReady, hookError,
     turnSnapshots, rewindToTurn,
     closeCoachAndAdvance, getPlacementsPreview
   } = useUpwords(online);
@@ -230,8 +230,11 @@ export default function App() {
         <main className="flex-1 flex flex-col lg:flex-row p-4 md:p-6 gap-6 max-w-7xl w-full mx-auto min-h-0">
 
           {onlineInfo && (
-            <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 bg-black/90 border border-amber-500/40 rounded-lg px-3 py-2 text-[10px] font-mono text-amber-300 max-w-[95vw] overflow-x-auto whitespace-nowrap">
-              clientStoredId={getClientId()} | isHost={String(isHost)} | mySeatIndex(raw)={onlineInfo.mySeatIndex} | myPlayerIndex={myPlayerIndex} | hostId={room?.hostId} | currentTurn={currentTurn} | turnPlayer={players[currentTurn]?.name}({String(players[currentTurn]?.isAi)}) | players=[{players.map(p => `${p.name}:${p.isAi ? 'ai' : 'human'}`).join(', ')}]
+            <div
+              style={{ pointerEvents: 'none' }}
+              className="fixed bottom-0 left-0 right-0 z-50 bg-black/95 border-t border-amber-500/40 px-3 py-1.5 text-[9px] font-mono text-amber-300 overflow-x-auto whitespace-nowrap"
+            >
+              clientStoredId={getClientId()} | isHost={String(isHost)} | mySeatIndex(raw)={onlineInfo.mySeatIndex} | myPlayerIndex={myPlayerIndex} | hostId={room?.hostId} | currentTurn={currentTurn} | turnPlayer={players[currentTurn]?.name}({String(players[currentTurn]?.isAi)}) | humanMovesReady={String(humanMovesReady)} | hookError={hookError ?? 'none'} | players=[{players.map(p => `${p.name}:${p.isAi ? 'ai' : 'human'}`).join(', ')}]
             </div>
           )}
 
